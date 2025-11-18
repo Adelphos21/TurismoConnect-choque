@@ -1,4 +1,3 @@
-# guides_handler.py
 import os
 import json
 import uuid
@@ -7,13 +6,14 @@ from datetime import datetime, timezone, timedelta
 
 import boto3
 from boto3.dynamodb.conditions import Key
+import jwt  # 👈 importante
 
 dynamodb = boto3.resource("dynamodb")
 
 GUIDES_TABLE_NAME = os.environ["GUIDES_TABLE"]
 AVAIL_TABLE_NAME = os.environ["GUIDE_AVAILABILITY_TABLE"]
 PRICES_TABLE_NAME = os.environ["GUIDE_PRICES_TABLE"]
-INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN", "")
+AUTH_JWT_SECRET = os.environ["AUTH_JWT_SECRET"]
 
 guides_table = dynamodb.Table(GUIDES_TABLE_NAME)
 avail_table = dynamodb.Table(AVAIL_TABLE_NAME)
@@ -78,9 +78,29 @@ def _map_guide_item_to_search_response(item):
     }
 
 
-def _require_internal_token(headers):
-    token = (headers or {}).get("X-Internal-Token") or (headers or {}).get("x-internal-token")
-    return token and INTERNAL_TOKEN and token == INTERNAL_TOKEN
+# ---------------- JWT helpers ----------------
+
+def _get_jwt_payload(headers):
+    auth = (headers or {}).get("Authorization") or (headers or {}).get("authorization")
+    if not auth or not auth.startswith("Bearer "):
+        return None
+
+    token = auth.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(token, AUTH_JWT_SECRET, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+
+def _require_jwt(event):
+    headers = event.get("headers") or {}
+    payload = _get_jwt_payload(headers)
+    if not payload:
+        return None, _resp(401, {"error": "unauthorized"})
+    return payload, None
 
 
 # ------------- GUIDES -------------
@@ -98,7 +118,6 @@ def create_guide(event, context):
     dni = body["dni"]
     correo = body["correo"]
 
-    # Conflicto simple por scan
     scan = guides_table.scan()
     for item in scan.get("Items", []):
         if item.get("dni") == dni:
@@ -327,6 +346,10 @@ def get_availability(event, context):
 
 
 def hold_slot(event, context):
+    payload, err = _require_jwt(event)
+    if err:
+        return err
+
     params = event.get("pathParameters") or {}
     guide_id = params.get("id")
     if not guide_id:
@@ -379,19 +402,25 @@ def hold_slot(event, context):
 
 
 def book_slot(event, context):
-    headers = event.get("headers") or {}
-    if not _require_internal_token(headers):
-        return _resp(401, {"error": "unauthorized"})
+    payload, err = _require_jwt(event)
+    if err:
+        return err
 
     params = event.get("pathParameters") or {}
-    qs = event.get("queryStringParameters") or {}
     guide_id = params.get("id")
-    date_str = qs.get("date")
-    start = qs.get("start")
-    end = qs.get("end")
+    if not guide_id:
+        return _resp(400, {"error": "Missing guide id"})
 
-    if not (guide_id and date_str and start and end):
-        return _resp(400, {"error": "Missing params"})
+    body = _parse_body(event)
+    if body is None:
+        return _resp(400, {"error": "Invalid JSON"})
+
+    date_str = body.get("date")
+    start = body.get("startTime")
+    end = body.get("endTime")
+
+    if not (date_str and start and end):
+        return _resp(400, {"error": "Missing fields"})
 
     slot_id = _to_slot_id(date_str, start, end)
     try:
@@ -417,19 +446,25 @@ def book_slot(event, context):
 
 
 def free_slot(event, context):
-    headers = event.get("headers") or {}
-    if not _require_internal_token(headers):
-        return _resp(401, {"error": "unauthorized"})
+    payload, err = _require_jwt(event)
+    if err:
+        return err
 
     params = event.get("pathParameters") or {}
-    qs = event.get("queryStringParameters") or {}
     guide_id = params.get("id")
-    date_str = qs.get("date")
-    start = qs.get("start")
-    end = qs.get("end")
+    if not guide_id:
+        return _resp(400, {"error": "Missing guide id"})
 
-    if not (guide_id and date_str and start and end):
-        return _resp(400, {"error": "Missing params"})
+    body = _parse_body(event)
+    if body is None:
+        return _resp(400, {"error": "Invalid JSON"})
+
+    date_str = body.get("date")
+    start = body.get("startTime")
+    end = body.get("endTime")
+
+    if not (date_str and start and end):
+        return _resp(400, {"error": "Missing fields"})
 
     slot_id = _to_slot_id(date_str, start, end)
     try:
