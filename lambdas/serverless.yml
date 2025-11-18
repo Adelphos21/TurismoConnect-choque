@@ -1,0 +1,289 @@
+service: turismo-backend
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: python3.11
+  region: us-east-1
+  stage: ${opt:stage, 'dev'}
+  environment:
+    # --- Auth / Users ---
+    USERS_TABLE: turismo-users-${self:provider.stage}
+    AUTH_JWT_SECRET: ${env:AUTH_JWT_SECRET}
+    AUTH_JWT_EXP_DAYS: 7
+
+    # --- Guides ---
+    GUIDES_TABLE: turismo-guides-${self:provider.stage}
+    GUIDE_AVAILABILITY_TABLE: turismo-availability-${self:provider.stage}
+    GUIDE_PRICES_TABLE: turismo-prices-${self:provider.stage}
+    INTERNAL_TOKEN: ${env:INTERNAL_TOKEN} # para endpoints internos de book/free
+
+    # --- Reservations ---
+    RESERVATIONS_TABLE: turismo-reservations-${self:provider.stage}
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:UpdateItem
+            - dynamodb:Query
+            - dynamodb:Scan
+          Resource:
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TABLE}/index/*
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GUIDES_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GUIDE_AVAILABILITY_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GUIDE_PRICES_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GUIDES_TABLE}/index/*
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GUIDE_AVAILABILITY_TABLE}/index/*
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GUIDE_PRICES_TABLE}/index/*
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.RESERVATIONS_TABLE}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.RESERVATIONS_TABLE}/index/*
+
+functions:
+  # =======================
+  #        AUTH / USERS
+  # =======================
+  authRegister:
+    handler: auth_handler.register_user
+    events:
+      - http:
+          path: auth/register
+          method: post
+          cors: true
+
+  authLogin:
+    handler: auth_handler.login_user
+    events:
+      - http:
+          path: auth/login
+          method: post
+          cors: true
+
+  authMe:
+    handler: auth_handler.me
+    events:
+      - http:
+          path: auth/me
+          method: get
+          cors: true
+
+  # =======================
+  #         GUIAS
+  # =======================
+  createGuide:
+    handler: guides_handler.create_guide
+    events:
+      - http:
+          path: guides
+          method: post
+          cors: true
+
+  editGuide:
+    handler: guides_handler.edit_guide
+    events:
+      - http:
+          path: guides/{id}
+          method: put
+          cors: true
+
+  getGuide:
+    handler: guides_handler.get_guide
+    events:
+      - http:
+          path: guides/{id}
+          method: get
+          cors: true
+
+  searchGuides:
+    handler: guides_handler.search_guides
+    events:
+      - http:
+          path: guides/search
+          method: get
+          cors: true
+
+  getAvailability:
+    handler: guides_handler.get_availability
+    events:
+      - http:
+          path: guides/{id}/availability
+          method: get
+          cors: true
+
+  holdSlot:
+    handler: guides_handler.hold_slot
+    events:
+      - http:
+          path: guides/{id}/availability/hold
+          method: post
+          cors: true
+
+  bookSlot:
+    handler: guides_handler.book_slot
+    events:
+      - http:
+          path: guides/{id}/availability/book
+          method: post
+          cors: true
+
+  freeSlot:
+    handler: guides_handler.free_slot
+    events:
+      - http:
+          path: guides/{id}/availability/free
+          method: post
+          cors: true
+
+  # =======================
+  #       RESERVAS
+  # =======================
+  createReserva:
+    handler: reservations_handler.create_reserva
+    events:
+      - http:
+          path: internal/reservas
+          method: post
+          cors: true
+
+  getReserva:
+    handler: reservations_handler.get_reserva
+    events:
+      - http:
+          path: internal/reservas/{id}
+          method: get
+          cors: true
+
+  confirmReserva:
+    handler: reservations_handler.confirm_reserva
+    events:
+      - http:
+          path: internal/reservas/{id}/confirmar
+          method: put
+          cors: true
+
+  cancelReserva:
+    handler: reservations_handler.cancel_reserva
+    events:
+      - http:
+          path: internal/reservas/{id}/cancelar
+          method: put
+          cors: true
+
+  listReservasUsuario:
+    handler: reservations_handler.list_reservas_usuario
+    events:
+      - http:
+          path: internal/reservas/usuario/{user_id}
+          method: get
+          cors: true
+
+  listReservasGuia:
+    handler: reservations_handler.list_reservas_guia
+    events:
+      - http:
+          path: internal/reservas/guia/{guide_id}
+          method: get
+          cors: true
+
+resources:
+  Resources:
+    # ========== USERS ==========
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.USERS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: email-index
+            KeySchema:
+              - AttributeName: email
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+    # ========== GUIDES ==========
+    GuidesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.GUIDES_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+
+    GuideAvailabilityTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.GUIDE_AVAILABILITY_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: guide_id
+            AttributeType: S
+          - AttributeName: slot_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: guide_id
+            KeyType: HASH
+          - AttributeName: slot_id
+            KeyType: RANGE
+
+    GuidePricesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.GUIDE_PRICES_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: guide_id
+            AttributeType: S
+          - AttributeName: price_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: guide_id
+            KeyType: HASH
+          - AttributeName: price_id
+            KeyType: RANGE
+
+    # ========== RESERVATIONS ==========
+    ReservationsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.RESERVATIONS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: user_id
+            AttributeType: S
+          - AttributeName: guide_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: user_id-index
+            KeySchema:
+              - AttributeName: user_id
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+          - IndexName: guide_id-index
+            KeySchema:
+              - AttributeName: guide_id
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
