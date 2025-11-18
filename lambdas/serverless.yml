@@ -5,11 +5,16 @@ frameworkVersion: '4'
 
 plugins:
   - serverless-dotenv-plugin
-  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    pythonBin: python3
+    slim: true
+    strip: false
 
 provider:
   name: aws
-  runtime: python3.12        # 👈 mejor usar 3.12 que sí está soportado 100%
+  runtime: python3.12          # puedes dejar 3.12, el problema era local, no en AWS
   region: us-east-1
   stage: ${opt:stage, 'dev'}
   memorySize: 256
@@ -27,7 +32,6 @@ provider:
     GUIDES_TABLE: turismo-guides-${self:provider.stage}
     GUIDE_AVAILABILITY_TABLE: turismo-availability-${self:provider.stage}
     GUIDE_PRICES_TABLE: turismo-prices-${self:provider.stage}
-    # INTERNAL_TOKEN: ya no se usa, lo quitamos
 
     # --- Reservations ---
     RESERVATIONS_TABLE: turismo-reservations-${self:provider.stage}
