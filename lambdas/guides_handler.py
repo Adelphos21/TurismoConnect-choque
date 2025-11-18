@@ -20,18 +20,35 @@ avail_table = dynamodb.Table(AVAIL_TABLE_NAME)
 prices_table = dynamodb.Table(PRICES_TABLE_NAME)
 
 
-def _decimal_default(obj):
+# ---------- helpers de respuesta / decimales / CORS ----------
+
+def response(status, body):
+    return {
+        "statusCode": status,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET,PUT,DELETE"
+        },
+        "body": json.dumps(body)
+    }
+
+
+def clean_decimals(obj):
+    if isinstance(obj, list):
+        return [clean_decimals(i) for i in obj]
+    if isinstance(obj, dict):
+        return {k: clean_decimals(v) for k, v in obj.items()}
     if isinstance(obj, Decimal):
+        if obj % 1 == 0:
+            return int(obj)
         return float(obj)
-    raise TypeError
+    return obj
 
 
 def _resp(status, body):
-    return {
-        "statusCode": status,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps(body, default=_decimal_default),
-    }
+    # unifica: limpia Decimals y añade CORS
+    return response(status, clean_decimals(body))
 
 
 def _parse_body(event):
