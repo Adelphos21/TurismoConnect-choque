@@ -21,9 +21,15 @@ users_table = dynamodb.Table(USERS_TABLE_NAME)
 def _resp(status, body):
     return {
         "statusCode": status,
-        "headers": {"Content-Type": "application/json"},
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET,PUT,DELETE"
+        },
         "body": json.dumps(body),
     }
+
 
 
 def _parse_body(event):
