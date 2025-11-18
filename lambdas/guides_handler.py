@@ -119,11 +119,28 @@ def _require_jwt(event):
         return None, _resp(401, {"error": "unauthorized"})
     return payload, None
 
+def _require_guide(event):
+    payload, err = _require_jwt(event)
+    if err:
+        return None, err
+    if payload.get("role") != "guide":
+        return None, _resp(403, {"error": "forbidden", "message": "Solo guías pueden acceder a este recurso"})
+    return payload, None
+
 
 # ------------- GUIDES -------------
 
 
 def create_guide(event, context):
+    # Solo un usuario autenticado con role = guide puede crear su perfil
+    payload, err = _require_guide(event)
+    if err:
+        return err
+
+    user_id = payload.get("sub")
+    if not user_id:
+        return _resp(401, {"error": "unauthorized"})
+
     body = _parse_body(event)
     if body is None:
         return _resp(400, {"error": "Invalid JSON"})
@@ -135,12 +152,22 @@ def create_guide(event, context):
     dni = body["dni"]
     correo = body["correo"]
 
-    scan = guides_table.scan()
-    for item in scan.get("Items", []):
-        if item.get("dni") == dni:
-            return _resp(409, {"error": "CONFLICT", "message": "Ya existe un usuario con este DNI"})
-        if item.get("correo") == correo:
-            return _resp(409, {"error": "CONFLICT", "message": "Ya existe un usuario registrado con este correo"})
+    # 1 guía por usuario (opcional pero recomendado)
+    try:
+        scan = guides_table.scan()
+        for item in scan.get("Items", []):
+            if item.get("user_id") == user_id:
+                return _resp(409, {
+                    "error": "CONFLICT",
+                    "message": "Este usuario ya tiene un perfil de guía"
+                })
+            if item.get("dni") == dni:
+                return _resp(409, {"error": "CONFLICT", "message": "Ya existe un usuario con este DNI"})
+            if item.get("correo") == correo:
+                return _resp(409, {"error": "CONFLICT", "message": "Ya existe un usuario registrado con este correo"})
+    except Exception as e:
+        print("Error escaneando guías:", e)
+        return _resp(500, {"error": "internal_error", "message": str(e)})
 
     guide_id = str(uuid.uuid4())
     languages = body.get("languages") or []
@@ -148,6 +175,7 @@ def create_guide(event, context):
 
     item = {
         "id": guide_id,
+        "user_id": user_id,   # 👈 enlace al usuario autenticado
         "dni": dni,
         "nombres": body["nombres"],
         "apellidos": body["apellidos"],
@@ -172,10 +200,30 @@ def create_guide(event, context):
 
 
 def edit_guide(event, context):
+    payload, err = _require_guide(event)
+    if err:
+        return err
+
+    user_id = payload.get("sub")
+
     params = event.get("pathParameters") or {}
     guide_id = params.get("id")
     if not guide_id:
         return _resp(400, {"error": "Falta id"})
+
+    # Verificar que esta guía pertenece al usuario autenticado
+    try:
+        res = guides_table.get_item(Key={"id": guide_id})
+        guide = res.get("Item")
+    except Exception as e:
+        print("Error leyendo guía:", e)
+        return _resp(500, {"error": "internal_error", "message": str(e)})
+
+    if not guide:
+        return _resp(404, {"error": "not_found", "message": "Guía no encontrado"})
+
+    if guide.get("user_id") != user_id:
+        return _resp(403, {"error": "forbidden", "message": "No puedes editar este perfil"})
 
     body = _parse_body(event)
     if body is None:
@@ -220,6 +268,7 @@ def edit_guide(event, context):
         return _resp(400, {"error": str(e) or "Ocurrió un error inesperado"})
 
     return _resp(200, {"message": "Perfil de guia modificado correctamente"})
+
 
 
 def get_guide(event, context):
@@ -501,3 +550,20 @@ def free_slot(event, context):
         return _resp(500, {"error": "internal_error", "message": str(e)})
 
     return _resp(200, {})
+
+def get_my_guide_profile(event, context):
+    payload, err = _require_guide(event)
+    if err:
+        return err
+
+    user_id = payload.get("sub")
+    try:
+        scan = guides_table.scan()
+        for item in scan.get("Items", []):
+            if item.get("user_id") == user_id:
+                return _resp(200, _map_guide_item_to_get_response(item))
+    except Exception as e:
+        print("Error en get_my_guide_profile:", e)
+        return _resp(500, {"error": "internal_error", "message": str(e)})
+
+    return _resp(404, {"error": "not_found", "message": "Este usuario no tiene perfil de guía"})
