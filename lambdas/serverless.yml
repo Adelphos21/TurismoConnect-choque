@@ -1,10 +1,18 @@
-service: turismo-backend
-frameworkVersion: "3"
+org: cangel05
+service: l208
+
+plugins:
+  - serverless-dotenv-plugin
 
 provider:
   name: aws
-  runtime: python3.11
+  runtime: python3.13
+  memorySize: 256
+  stage: dev
   region: us-east-1
+  timeout: 60
+  iam:
+    role: arn:aws:iam::977278057569:role/LabRole
   stage: ${opt:stage, 'dev'}
   environment:
     # --- Auth / Users ---
@@ -20,28 +28,6 @@ provider:
 
     # --- Reservations ---
     RESERVATIONS_TABLE: turismo-reservations-${self:provider.stage}
-
-  iam:
-    role:
-      statements:
-        - Effect: Allow
-          Action:
-            - dynamodb:PutItem
-            - dynamodb:GetItem
-            - dynamodb:UpdateItem
-            - dynamodb:Query
-            - dynamodb:Scan
-          Resource:
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TABLE}
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TABLE}/index/*
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GUIDES_TABLE}
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GUIDE_AVAILABILITY_TABLE}
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GUIDE_PRICES_TABLE}
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GUIDES_TABLE}/index/*
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GUIDE_AVAILABILITY_TABLE}/index/*
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GUIDE_PRICES_TABLE}/index/*
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.RESERVATIONS_TABLE}
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.RESERVATIONS_TABLE}/index/*
 
 functions:
   # =======================
