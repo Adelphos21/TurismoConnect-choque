@@ -1,18 +1,21 @@
 org: cangel05
 service: l208
 
+frameworkVersion: '4'
+
 plugins:
   - serverless-dotenv-plugin
 
 provider:
   name: aws
-  runtime: python3.13
-  memorySize: 256
-  stage: dev
+  runtime: python3.12        # 👈 mejor usar 3.12 que sí está soportado 100%
   region: us-east-1
+  stage: ${opt:stage, 'dev'}
+  memorySize: 256
   timeout: 60
   iam:
     role: arn:aws:iam::977278057569:role/LabRole
+
   environment:
     # --- Auth / Users ---
     USERS_TABLE: turismo-users-${self:provider.stage}
@@ -23,7 +26,7 @@ provider:
     GUIDES_TABLE: turismo-guides-${self:provider.stage}
     GUIDE_AVAILABILITY_TABLE: turismo-availability-${self:provider.stage}
     GUIDE_PRICES_TABLE: turismo-prices-${self:provider.stage}
-    INTERNAL_TOKEN: ${env:INTERNAL_TOKEN} # para endpoints internos de book/free
+    # INTERNAL_TOKEN: ya no se usa, lo quitamos
 
     # --- Reservations ---
     RESERVATIONS_TABLE: turismo-reservations-${self:provider.stage}
