@@ -14,10 +14,12 @@ GUIDES_TABLE_NAME = os.environ["GUIDES_TABLE"]
 AVAIL_TABLE_NAME = os.environ["GUIDE_AVAILABILITY_TABLE"]
 PRICES_TABLE_NAME = os.environ["GUIDE_PRICES_TABLE"]
 AUTH_JWT_SECRET = os.environ["AUTH_JWT_SECRET"]
+USERS_TABLE_NAME = os.environ["USERS_TABLE"]  # 👈 añadimos esto
 
 guides_table = dynamodb.Table(GUIDES_TABLE_NAME)
 avail_table = dynamodb.Table(AVAIL_TABLE_NAME)
 prices_table = dynamodb.Table(PRICES_TABLE_NAME)
+users_table = dynamodb.Table(USERS_TABLE_NAME)  # 👈 tabla de usuarios
 
 
 # ---------- helpers de respuesta / decimales / CORS ----------
@@ -119,6 +121,7 @@ def _require_jwt(event):
         return None, _resp(401, {"error": "unauthorized"})
     return payload, None
 
+
 def _require_guide(event):
     payload, err = _require_jwt(event)
     if err:
@@ -128,12 +131,31 @@ def _require_guide(event):
     return payload, None
 
 
+def _upgrade_user_to_guide(user_id: str):
+    """
+    Cambia el rol del usuario en la tabla USERS_TABLE a 'guide'.
+    """
+    try:
+        users_table.update_item(
+            Key={"id": user_id},
+            UpdateExpression="SET #role = :guide",
+            ExpressionAttributeNames={"#role": "role"},
+            ExpressionAttributeValues={":guide": "guide"},
+        )
+    except Exception as e:
+        print("Error actualizando rol de usuario a guide:", e)
+        # No reventamos el flujo por esto, pero queda logueado.
+
+
 # ------------- GUIDES -------------
 
 
 def create_guide(event, context):
-    # Solo un usuario autenticado con role = guide puede crear su perfil
-    payload, err = _require_guide(event)
+    """
+    Cualquier usuario autenticado puede crear su perfil de guía.
+    Al hacerlo, se le actualiza el role = 'guide' en la tabla de usuarios.
+    """
+    payload, err = _require_jwt(event)  # 👈 YA NO exigimos role=guide aquí
     if err:
         return err
 
@@ -195,6 +217,9 @@ def create_guide(event, context):
     except Exception as e:
         print("Error al crear guía:", e)
         return _resp(400, {"error": "SYSTEM_ERROR", "message": f"Error al crear el guía: {str(e)}"})
+
+    # 👇 actualizamos el rol del usuario a 'guide'
+    _upgrade_user_to_guide(user_id)
 
     return _resp(201, {"id": guide_id, "message": "Guía creado exitosamente"})
 
@@ -268,7 +293,6 @@ def edit_guide(event, context):
         return _resp(400, {"error": str(e) or "Ocurrió un error inesperado"})
 
     return _resp(200, {"message": "Perfil de guia modificado correctamente"})
-
 
 
 def get_guide(event, context):
@@ -550,6 +574,7 @@ def free_slot(event, context):
         return _resp(500, {"error": "internal_error", "message": str(e)})
 
     return _resp(200, {})
+
 
 def get_my_guide_profile(event, context):
     payload, err = _require_guide(event)
