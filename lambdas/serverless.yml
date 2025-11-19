@@ -130,6 +130,13 @@ functions:
           path: guides/{id}/availability/free
           method: post
           cors: true
+  getMyGuideProfile:
+    handler: guides_handler.get_my_guide_profile
+    events:
+      - http:
+          path: guides/me
+          method: get
+          cors: true
 
   # =======================
   #       RESERVAS
