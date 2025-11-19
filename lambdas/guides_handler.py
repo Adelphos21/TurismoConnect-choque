@@ -602,3 +602,4 @@ def get_my_guide_profile(event, context):
         return _resp(500, {"error": "internal_error", "message": str(e)})
 
     return _resp(404, {"error": "not_found", "message": "Este usuario no tiene perfil de guía"})
+
