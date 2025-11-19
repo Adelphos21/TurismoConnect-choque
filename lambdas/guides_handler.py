@@ -15,6 +15,7 @@ AVAIL_TABLE_NAME = os.environ["GUIDE_AVAILABILITY_TABLE"]
 PRICES_TABLE_NAME = os.environ["GUIDE_PRICES_TABLE"]
 AUTH_JWT_SECRET = os.environ["AUTH_JWT_SECRET"]
 USERS_TABLE_NAME = os.environ["USERS_TABLE"]  # 👈 añadimos esto
+users_table = dynamodb.Table(USERS_TABLE_NAME)
 
 guides_table = dynamodb.Table(GUIDES_TABLE_NAME)
 avail_table = dynamodb.Table(AVAIL_TABLE_NAME)
@@ -218,8 +219,17 @@ def create_guide(event, context):
         print("Error al crear guía:", e)
         return _resp(400, {"error": "SYSTEM_ERROR", "message": f"Error al crear el guía: {str(e)}"})
 
-    # 👇 actualizamos el rol del usuario a 'guide'
-    _upgrade_user_to_guide(user_id)
+     # 👉 Promocionar al usuario a "guide"
+    try:
+        users_table.update_item(
+            Key={"id": user_id},
+            UpdateExpression="SET #role = :guide",
+            ExpressionAttributeNames={"#role": "role"},
+            ExpressionAttributeValues={":guide": "guide"},
+        )
+    except Exception as e:
+        # No rompas si falla esto, pero deja log
+        print("Error actualizando rol del usuario a guide:", e)
 
     return _resp(201, {"id": guide_id, "message": "Guía creado exitosamente"})
 
